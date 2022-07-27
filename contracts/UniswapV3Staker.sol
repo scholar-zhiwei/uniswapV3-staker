@@ -19,14 +19,18 @@ import '@uniswap/v3-periphery/contracts/base/Multicall.sol';
 contract UniswapV3Staker is IUniswapV3Staker, Multicall {
     /// @notice Represents a staking incentive
     struct Incentive {
+        //尚未被用户认领的奖励token数量
         uint256 totalRewardUnclaimed;
+         //提供流动性的总秒数
         uint160 totalSecondsClaimedX128;
+        //目前用于质押的数量
         uint96 numberOfStakes;
     }
 
     /// @notice Represents the deposit of a liquidity NFT
     struct Deposit {
         address owner;
+        //质押的LP的总价值
         uint48 numberOfStakes;
         int24 tickLower;
         int24 tickUpper;
@@ -34,6 +38,7 @@ contract UniswapV3Staker is IUniswapV3Staker, Multicall {
 
     /// @notice Represents a staked liquidity NFT
     struct Stake {
+        //价格范围内每秒的流动性累加值
         uint160 secondsPerLiquidityInsideInitialX128;
         uint96 liquidityNoOverflow;
         uint128 liquidityIfOverflow;
@@ -44,9 +49,9 @@ contract UniswapV3Staker is IUniswapV3Staker, Multicall {
     /// @inheritdoc IUniswapV3Staker
     INonfungiblePositionManager public immutable override nonfungiblePositionManager;
 
-    /// @inheritdoc IUniswapV3Staker
+    //可以设置激励开始时间为将来的最大秒数，即：设置的开始时间不能间隔大于此值
     uint256 public immutable override maxIncentiveStartLeadTime;
-    /// @inheritdoc IUniswapV3Staker
+    //奖励的最大持续时间，以秒为单位 质押不能太久
     uint256 public immutable override maxIncentiveDuration;
 
     /// @dev bytes32 refers to the return value of IncentiveId.compute
@@ -59,6 +64,8 @@ contract UniswapV3Staker is IUniswapV3Staker, Multicall {
     mapping(uint256 => mapping(bytes32 => Stake)) private _stakes;
 
     /// @inheritdoc IUniswapV3Staker
+    //返回NFT质押信息
+    //liquidity：在最后一次计算奖励时，NFT的流动性金额
     function stakes(uint256 tokenId, bytes32 incentiveId)
         public
         view
@@ -75,6 +82,7 @@ contract UniswapV3Staker is IUniswapV3Staker, Multicall {
 
     /// @dev rewards[rewardToken][owner] => uint256
     /// @inheritdoc IUniswapV3Staker
+    //奖励的是erc20token
     mapping(IERC20Minimal => mapping(address => uint256)) public override rewards;
 
     /// @param _factory the Uniswap V3 factory
@@ -94,6 +102,7 @@ contract UniswapV3Staker is IUniswapV3Staker, Multicall {
     }
 
     /// @inheritdoc IUniswapV3Staker
+    //创造一个新的流动性挖掘激励
     function createIncentive(IncentiveKey memory key, uint256 reward) external override {
         require(reward > 0, 'UniswapV3Staker::createIncentive: reward must be positive');
         require(
@@ -109,17 +118,20 @@ contract UniswapV3Staker is IUniswapV3Staker, Multicall {
             key.endTime - key.startTime <= maxIncentiveDuration,
             'UniswapV3Staker::createIncentive: incentive duration is too long'
         );
-
+        
         bytes32 incentiveId = IncentiveId.compute(key);
 
+        //??????  创建激励就知道reward多少？  totalRewardUnclaimed：尚未被用户认领的奖励token数量
         incentives[incentiveId].totalRewardUnclaimed += reward;
 
+        //??????  将msg.sender的ERC20发送到该合约？ 不应该是将v3-NFT发送给合约吗?
         TransferHelperExtended.safeTransferFrom(address(key.rewardToken), msg.sender, address(this), reward);
 
         emit IncentiveCreated(key.rewardToken, key.pool, key.startTime, key.endTime, key.refundee, reward);
     }
 
     /// @inheritdoc IUniswapV3Staker
+    //激励结束时间已过，且所有股份已撤出后，终止激励
     function endIncentive(IncentiveKey memory key) external override returns (uint256 refund) {
         require(block.timestamp >= key.endTime, 'UniswapV3Staker::endIncentive: cannot end incentive before end time');
 
@@ -136,6 +148,7 @@ contract UniswapV3Staker is IUniswapV3Staker, Multicall {
 
         // issue the refund
         incentive.totalRewardUnclaimed = 0;
+        //将ERC20奖励代币发送给refundee
         TransferHelperExtended.safeTransfer(address(key.rewardToken), key.refundee, refund);
 
         // note we never clear totalSecondsClaimedX128
@@ -176,6 +189,7 @@ contract UniswapV3Staker is IUniswapV3Staker, Multicall {
     }
 
     /// @inheritdoc IUniswapV3Staker
+    //转移LPtoken的所有权
     function transferDeposit(uint256 tokenId, address to) external override {
         require(to != address(0), 'UniswapV3Staker::transferDeposit: invalid transfer recipient');
         address owner = deposits[tokenId].owner;
@@ -185,6 +199,7 @@ contract UniswapV3Staker is IUniswapV3Staker, Multicall {
     }
 
     /// @inheritdoc IUniswapV3Staker
+    //将Uniswap V3 LPtoken“tokenId”从合约中撤回给接收者
     function withdrawToken(
         uint256 tokenId,
         address to,
@@ -202,6 +217,7 @@ contract UniswapV3Staker is IUniswapV3Staker, Multicall {
     }
 
     /// @inheritdoc IUniswapV3Staker
+    //质押LPtoken
     function stakeToken(IncentiveKey memory key, uint256 tokenId) external override {
         require(deposits[tokenId].owner == msg.sender, 'UniswapV3Staker::stakeToken: only owner can stake token');
 
@@ -209,6 +225,7 @@ contract UniswapV3Staker is IUniswapV3Staker, Multicall {
     }
 
     /// @inheritdoc IUniswapV3Staker
+    //取消质押的LP
     function unstakeToken(IncentiveKey memory key, uint256 tokenId) external override {
         Deposit memory deposit = deposits[tokenId];
         // anyone can call unstakeToken if the block time is after the end time of the incentive
@@ -260,6 +277,7 @@ contract UniswapV3Staker is IUniswapV3Staker, Multicall {
     }
 
     /// @inheritdoc IUniswapV3Staker
+    //将已产生的“rewardToken”奖励从合约转移到接收者数量为的“amountrequrequested”
     function claimReward(
         IERC20Minimal rewardToken,
         address to,
@@ -277,6 +295,7 @@ contract UniswapV3Staker is IUniswapV3Staker, Multicall {
     }
 
     /// @inheritdoc IUniswapV3Staker
+    //到目前为止，LP获得了奖励
     function getRewardInfo(IncentiveKey memory key, uint256 tokenId)
         external
         view
@@ -326,11 +345,14 @@ contract UniswapV3Staker is IUniswapV3Staker, Multicall {
             NFTPositionInfo.getPositionInfo(factory, nonfungiblePositionManager, tokenId);
 
         require(pool == key.pool, 'UniswapV3Staker::stakeToken: token pool is not the incentive pool');
+        //质押的NFT需要处于提供流动性的状态，即：token的价格需要在你设置的价格区间之内
         require(liquidity > 0, 'UniswapV3Staker::stakeToken: cannot stake token with 0 liquidity');
 
+        //tokenId质押数量加一
         deposits[tokenId].numberOfStakes++;
         incentives[incentiveId].numberOfStakes++;
 
+        //获取池子的每秒流动性的累加值  
         (, uint160 secondsPerLiquidityInsideX128, ) = pool.snapshotCumulativesInside(tickLower, tickUpper);
 
         if (liquidity >= type(uint96).max) {

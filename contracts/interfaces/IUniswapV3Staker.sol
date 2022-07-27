@@ -34,15 +34,21 @@ interface IUniswapV3Staker is IERC721Receiver, IMulticall {
     function nonfungiblePositionManager() external view returns (INonfungiblePositionManager);
 
     /// @notice The max duration of an incentive in seconds
+    //奖励的最大持续时间，以秒为单位
     function maxIncentiveDuration() external view returns (uint256);
 
     /// @notice The max amount of seconds into the future the incentive startTime can be set
+    //可以设置激励开始时间为将来的最大秒数
     function maxIncentiveStartLeadTime() external view returns (uint256);
 
     /// @notice Represents a staking incentive
+    //激励的ID由其参数计算出来
     /// @param incentiveId The ID of the incentive computed from its parameters
+    //尚未被用户认领的奖励token数量
     /// @return totalRewardUnclaimed The amount of reward token not yet claimed by users
+    //提供流动性的总秒数
     /// @return totalSecondsClaimedX128 Total liquidity-seconds claimed, represented as a UQ32.128
+    //目前用于质押的数量
     /// @return numberOfStakes The count of deposits that are currently staked for the incentive
     function incentives(bytes32 incentiveId)
         external
@@ -54,7 +60,9 @@ interface IUniswapV3Staker is IERC721Receiver, IMulticall {
         );
 
     /// @notice Returns information about a deposited NFT
+    //返回关于存储NFT的信息
     /// @return owner The owner of the deposited NFT
+    //质押的数量
     /// @return numberOfStakes Counter of how many incentives for which the liquidity is staked
     /// @return tickLower The lower tick of the range
     /// @return tickUpper The upper tick of the range
@@ -72,6 +80,7 @@ interface IUniswapV3Staker is IERC721Receiver, IMulticall {
     /// @param tokenId The ID of the staked token
     /// @param incentiveId The ID of the incentive for which the token is staked
     /// @return secondsPerLiquidityInsideInitialX128 secondsPerLiquidity represented as a UQ32.128
+    //在最后一次计算奖励时，NFT的流动性金额
     /// @return liquidity The amount of liquidity in the NFT as of the last time the rewards were computed
     function stakes(uint256 tokenId, bytes32 incentiveId)
         external
